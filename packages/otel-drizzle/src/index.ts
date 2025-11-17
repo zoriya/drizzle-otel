@@ -5,6 +5,7 @@ import {
   trace,
   type Span,
 } from "@opentelemetry/api";
+import { DrizzleQueryError } from "drizzle-orm";
 
 const DEFAULT_TRACER_NAME = "@kubiks/otel-drizzle";
 const DEFAULT_DB_SYSTEM = "postgresql";
@@ -130,7 +131,12 @@ function extractOperation(queryText: string): string | undefined {
  */
 function finalizeSpan(span: Span, error?: unknown): void {
   if (error) {
-    if (error instanceof Error) {
+    if (error instanceof DrizzleQueryError && error.cause) {
+      // special handling for node-postgres
+      if ("detail" in error.cause && typeof error.cause.detail === "string")
+        error.cause.stack = error.cause.detail;
+      span.recordException(error.cause)
+    } else if (error instanceof Error) {
       span.recordException(error);
     } else {
       span.recordException(new Error(String(error)));
